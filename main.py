@@ -88,6 +88,21 @@ class Drawer(threading.Thread):
             self._generate_graph()
             self._draw_graph()
 
+def initialize_network(nodes, init_node):
+    """
+        Initialize the nodes
+    """
+    for node in nodes:
+        if node.name == init_node:
+            node.initialize_network()
+
+def ask_for_critical_section(nodes, asking_nodes):
+    """
+        Make the asking_nodes ask for the critical section
+    """
+    for node in nodes:
+        if node.name in asking_nodes:
+            node.ask_for_critical_section()
 
 def main():
     """
@@ -96,12 +111,11 @@ def main():
         - instanciates a 'drawer' to display a graph of the network
     """
 
-    if len(sys.argv) < 3:
-        sys.stderr.write("Usage: %s number_of_nodes node_to_initialize\n" % sys.argv[0])
+    if len(sys.argv) < 2:
+        sys.stderr.write("Usage: %s number_of_nodes\n" % sys.argv[0])
         sys.exit(1)
 
     number_of_nodes = int(sys.argv[1])
-    node_to_initialize = sys.argv[2]
 
     ### INIT NODES ###
     nodes = []
@@ -124,18 +138,23 @@ def main():
 
     Drawer(nodes).start()
 
-    for node in nodes:
-        if node.name == node_to_initialize:
-            node.initialize_network()
-
     while True:
-        try:
-            asking_node = input('Which node will ask for the privilege?\n')
-            for node in nodes:
-                if node.name == asking_node:
-                    node.ask_for_critical_section()
-        except KeyboardInterrupt:
-            sys.exit()
+        cmd_line = input('>>> ')
+        cmd_line_args = cmd_line.split(' ')
+        cmd = cmd_line_args[0]
+        if cmd == 'exit':
+            sys.exit(0)
+        if cmd == 'init':
+            if len(cmd_line_args) != 2:
+                print('usage: init target_node')
+            target_node = cmd_line_args[1]
+            initialize_network(nodes, target_node)
+        elif cmd == 'ask':
+            if len(cmd_line_args) != 2:
+                print('usage: init [target_nodes]')
+            target_nodes = cmd_line_args[1].split(',')
+            ask_for_critical_section(nodes, target_nodes)
+
 
 if __name__ == '__main__':
     main()
