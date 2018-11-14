@@ -1,34 +1,54 @@
 #!/usr/bin/env python
 
-from node import Node
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import networkx as nx
-import pika
-import subprocess
+"""
+    Main module to orchestrate nodes
+"""
+
 import sys
 import threading
-import time
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import networkx as nx
+from node import Node
 
 NUMBER_OF_NODES = 10
 
-plt.ion()
+
 
 class Drawer(threading.Thread):
+    """
+        Class to draw the network graph
+    """
 
     def __init__(self, nodes):
         super().__init__()
         self.nodes = nodes
         self.graph = nx.DiGraph()
+        self._generate_graph()
+        self.nodes_pos = nx.shell_layout(self.graph)
 
-    def get_color(self, node):
+        #set interactive mode on
+        plt.ion()
+        #disable toolbar
+        mpl.rcParams['toolbar'] = 'None'
+
+    def _get_color(self, node):
+        """
+            Gets the color corresponding to the node
+            holder -> green
+            asked -> blue
+            other -> grey
+        """
         if node.holder == 'self':
             return 'green'
-        elif node.asked:
+        if node.asked:
             return 'blue'
         return 'grey'
 
     def _generate_graph(self):
+        """
+            Generates the graph
+        """
         self.graph.clear()
         for node_name in self.nodes:
             node = self.nodes[node_name]
@@ -37,6 +57,9 @@ class Drawer(threading.Thread):
                 self.graph.add_edge(node.name, node.holder)
 
     def _draw_graph(self):
+        """
+            Draws the graph
+        """
 
         plt.clf()
 
@@ -48,29 +71,31 @@ class Drawer(threading.Thread):
 
         colors = []
         for graph_node in self.graph.nodes():
-            node = [ self.nodes[node_name] for node_name in self.nodes if node_name == graph_node ][0]
-            color = self.get_color(node)
+            node = [self.nodes[node_name] for node_name in self.nodes if node_name == graph_node][0]
+            color = self._get_color(node)
             colors.append(color)
 
         nx.draw_networkx_nodes(self.graph, self.nodes_pos, node_color=colors)
         nx.draw_networkx_labels(self.graph, self.nodes_pos, labels, font_size=10, font_color='w')
-        nx.draw_networkx_edges(self.graph, self.nodes_pos, arrowstyle='->', arrowsize=10, edge_cmap=plt.cm.Blues, width=2)
+        nx.draw_networkx_edges(self.graph, self.nodes_pos,
+                               arrowstyle='->', arrowsize=10, width=2)
 
-        ax = plt.gca()
-        ax.set_axis_off()
+        axis = plt.gca()
+        axis.set_axis_off()
         plt.pause(0.001)
 
     def run(self):
-
-        self._generate_graph()
-        self.nodes_pos = nx.layout.shell_layout(self.graph)
-
         while True:
             self._generate_graph()
             self._draw_graph()
 
 
 def main():
+    """
+        Main code:
+        - creates nodes
+        - instanciates a 'drawer' to display a graph of the network
+    """
 
     if len(sys.argv) < 3:
         sys.stderr.write("Usage: %s number_of_nodes node_to_initialize\n" % sys.argv[0])
@@ -101,7 +126,7 @@ def main():
 
     Drawer(nodes).start()
 
-    nodes[node_to_initialize]._initialize_network()
+    nodes[node_to_initialize].initialize_network()
 
     while True:
         try:
@@ -109,7 +134,7 @@ def main():
             try:
                 nodes[asking_node].ask_for_critical_section()
             except KeyError:
-                print('No node with this name !\n')
+                print('No node with this name !')
         except KeyboardInterrupt:
             sys.exit()
 
