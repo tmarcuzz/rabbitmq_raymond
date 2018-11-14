@@ -11,10 +11,6 @@ import matplotlib as mpl
 import networkx as nx
 from node import Node
 
-NUMBER_OF_NODES = 10
-
-
-
 class Drawer(threading.Thread):
     """
         Class to draw the network graph
