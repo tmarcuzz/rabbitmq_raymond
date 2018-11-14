@@ -1,2 +1,2 @@
 # rabbitmq_raymond
-Implementation of Raymond's algorithm with RabbitMQ
+Python implementation of Raymond's algorithm with RabbitMQ for a school project
