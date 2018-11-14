@@ -10,6 +10,11 @@ import time
 import pika
 from fifo import Fifo
 
+MSG_REQUEST = 'request'
+MSG_INITIALIZE = 'initialize'
+MSG_PRIVILEGE = 'privilege'
+
+
 class Consumer(threading.Thread):
     """
         RabbitMQ consumer
@@ -65,25 +70,21 @@ class Publisher:
         self._channel.basic_publish(exchange='raymond',
                                     routing_key=routing_key, body="%s" % self._node_name)
 
-class Node(threading.Thread):
+class Node:
     """
         Node in the sense of Raymond's algorithm
         Implements the magical algorithm
     """
 
     def __init__(self, name, neighbors=None):
-        super(Node, self).__init__()
         self.name = name
-        self.holder = 'self'
+        self.holder = None
         self.using = False
         self._request_q = Fifo()
         self.asked = False
         self.neighbors = neighbors if neighbors else []
-        self.consumer_thread = Consumer(self.name, self._treat_message)
+        self.consumer = Consumer(self.name, self._treat_message)
         self.publisher = Publisher(self.name)
-
-    def run(self):
-        self.consumer_thread.start()
 
     def _assign_privilege(self):
         """
@@ -97,14 +98,14 @@ class Node(threading.Thread):
                 self._enter_critical_section()
                 self._exit_critical_section()
             else:
-                self.publisher.send_request(self.holder, 'privilege')
+                self.publisher.send_request(self.holder, MSG_PRIVILEGE)
 
     def _make_request(self):
         """
             Implementation of MAKE_REQUEST from Raymond's algorithm
         """
         if self.holder != 'self' and not self._request_q.empty() and not self.asked:
-            self.publisher.send_request(self.holder, 'request')
+            self.publisher.send_request(self.holder, MSG_REQUEST)
             self.asked = True
 
     def _assign_privilege_and_make_request(self):
@@ -157,12 +158,11 @@ class Node(threading.Thread):
         """
         message_type = method.routing_key.split('.')[1]
         sender = body.decode('UTF-8')
-        if message_type == 'request':
+        if message_type == MSG_REQUEST:
             self._receive_request(sender)
-        if message_type == 'privilege':
+        if message_type == MSG_PRIVILEGE:
             self._receive_privilege()
-        if message_type == 'initialize':
-            self.holder = sender
+        if message_type == MSG_INITIALIZE:
             self.initialize_network(sender)
 
     def initialize_network(self, init_sender=None):
@@ -173,8 +173,11 @@ class Node(threading.Thread):
         neighbors = self.neighbors.copy()
         if init_sender:
             neighbors.remove(init_sender)
+            self.holder = init_sender
+        else:
+            self.holder = 'self'
         for neighbor in neighbors:
-            self.publisher.send_request(neighbor, 'initialize')
+            self.publisher.send_request(neighbor, MSG_INITIALIZE)
 
 
 if __name__ == '__main__':
@@ -183,8 +186,8 @@ if __name__ == '__main__':
         sys.stderr.write("Usage: %s node_name\n" % sys.argv[0])
         sys.exit(1)
 
-    NODE_NAME = sys.argv[1]
-    NODE = Node(NODE_NAME)
-    NODE.start()
+    node_name = sys.argv[1]
+    node = Node(node_name)
+    node.consumer.start()
 
     #connection.close()

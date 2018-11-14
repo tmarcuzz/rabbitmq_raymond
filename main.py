@@ -46,9 +46,8 @@ class Drawer(threading.Thread):
             Generates the graph
         """
         self.graph.clear()
-        for node_name in self.nodes:
-            node = self.nodes[node_name]
-            self.graph.add_node(node_name)
+        for node in self.nodes:
+            self.graph.add_node(node.name)
             if node.holder != 'self':
                 self.graph.add_edge(node.name, node.holder)
 
@@ -62,12 +61,13 @@ class Drawer(threading.Thread):
         self._generate_graph()
 
         labels = {}
-        for node in self.graph.nodes():
-            labels[node] = node
+        for graph_node in self.graph.nodes():
+            labels[graph_node] = graph_node
 
+        # print(self.graph.nodes())
         colors = []
         for graph_node in self.graph.nodes():
-            node = [self.nodes[node_name] for node_name in self.nodes if node_name == graph_node][0]
+            node = [node for node in self.nodes if node.name == graph_node][0]
             color = self._get_color(node)
             colors.append(color)
 
@@ -101,36 +101,37 @@ def main():
     node_to_initialize = sys.argv[2]
 
     ### INIT NODES ###
-    nodes = {}
+    nodes = []
     for i in range(number_of_nodes):
-        node_name = str(i)
-        nodes[node_name] = Node(node_name)
+        node_name = '%s' % i
+        node = Node(node_name)
+        node.consumer.start()
+        nodes.append(node)
 
-    nodes['0'].neighbors = ['1', '2', '3']
-    nodes['1'].neighbors = ['0']
-    nodes['2'].neighbors = ['0']
-    nodes['3'].neighbors = ['0', '7', '4']
-    nodes['4'].neighbors = ['3', '5', '6']
-    nodes['5'].neighbors = ['4']
-    nodes['6'].neighbors = ['4']
-    nodes['7'].neighbors = ['3', '8', '9']
-    nodes['8'].neighbors = ['7']
-    nodes['9'].neighbors = ['7']
-
-    for node in nodes.values():
-        node.start()
+    nodes[0].neighbors = ['1', '2', '3']
+    nodes[1].neighbors = ['0']
+    nodes[2].neighbors = ['0']
+    nodes[3].neighbors = ['0', '7', '4']
+    nodes[4].neighbors = ['3', '5', '6']
+    nodes[5].neighbors = ['4']
+    nodes[6].neighbors = ['4']
+    nodes[7].neighbors = ['3', '8', '9']
+    nodes[8].neighbors = ['7']
+    nodes[9].neighbors = ['7']
 
     Drawer(nodes).start()
 
-    nodes[node_to_initialize].initialize_network()
+    for node in nodes:
+        if node.name == node_to_initialize:
+            node.initialize_network()
+
 
     while True:
         try:
             asking_node = input('Which node will ask for the privilege?\n')
-            try:
-                nodes[asking_node].ask_for_critical_section()
-            except KeyError:
-                print('No node with this name !')
+            for node in nodes:
+                if node.name == asking_node:
+                    node.ask_for_critical_section()
         except KeyboardInterrupt:
             sys.exit()
 
