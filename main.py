@@ -50,6 +50,10 @@ class Drawer(threading.Thread):
             self.graph.add_node(node.name)
             if node.holder != 'self':
                 self.graph.add_edge(node.name, node.holder)
+        #when node.initialize_network() is not called,
+        # a 'None' node will be in the graph (why ??)
+        if None in self.graph:
+            self.graph.remove_node(None)
 
     def _draw_graph(self):
         """
@@ -64,7 +68,6 @@ class Drawer(threading.Thread):
         for graph_node in self.graph.nodes():
             labels[graph_node] = graph_node
 
-        # print(self.graph.nodes())
         colors = []
         for graph_node in self.graph.nodes():
             node = [node for node in self.nodes if node.name == graph_node][0]
@@ -124,7 +127,6 @@ def main():
     for node in nodes:
         if node.name == node_to_initialize:
             node.initialize_network()
-
 
     while True:
         try:
