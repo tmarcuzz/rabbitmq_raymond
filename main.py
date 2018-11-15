@@ -148,11 +148,13 @@ def main():
         if cmd == 'init':
             if len(cmd_line_args) != 2:
                 print('usage: init target_node')
+                continue
             target_node = cmd_line_args[1]
             initialize_network(nodes, target_node)
         elif cmd == 'ask':
             if len(cmd_line_args) != 2:
                 print('usage: init [target_nodes]')
+                continue
             target_nodes = cmd_line_args[1].split(',')
             ask_for_critical_section(nodes, target_nodes)
 
