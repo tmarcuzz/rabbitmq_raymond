@@ -4,6 +4,7 @@
     Main module to orchestrate nodes
 """
 
+from itertools import chain
 import sys
 import threading
 import matplotlib.pyplot as plt
@@ -16,12 +17,11 @@ class Drawer(threading.Thread):
         Class to draw the network graph
     """
 
-    def __init__(self, nodes):
+    def __init__(self, graph):
         super().__init__()
-        self.nodes = nodes
-        self.graph = nx.DiGraph()
-        self._generate_graph()
-        self.nodes_pos = nx.shell_layout(self.graph)
+        self.graph = graph
+        # self._generate_graph()
+        self.nodes_pos = nx.spring_layout(self.graph)
 
         #set interactive mode on
         plt.ion()
@@ -45,11 +45,14 @@ class Drawer(threading.Thread):
         """
             Generates the graph
         """
-        self.graph.clear()
-        for node in self.nodes:
-            self.graph.add_node(node.name)
-            if node.holder != 'self':
-                self.graph.add_edge(node.name, node.holder)
+        edges_to_delete = [edge for edge in self.graph.edges]
+        for edge in edges_to_delete:
+            self.graph.remove_edge(edge[0], edge[1])
+
+        nodes = [self.graph.nodes[graph_node]['node'] for graph_node in self.graph.nodes()]
+        for node in nodes:
+            if node.holder != 'self' and node.holder is not None:
+                self.graph.add_edge(int(node.name), int(node.holder))
         #when node.initialize_network() is not called,
         # a 'None' node will be in the graph (why ??)
         if None in self.graph:
@@ -62,16 +65,13 @@ class Drawer(threading.Thread):
 
         plt.clf()
 
-        self._generate_graph()
-
         labels = {}
         for graph_node in self.graph.nodes():
             labels[graph_node] = graph_node
 
         colors = []
         for graph_node in self.graph.nodes():
-            node = [node for node in self.nodes if node.name == graph_node][0]
-            color = self._get_color(node)
+            color = self._get_color(self.graph.node[graph_node]['node'])
             colors.append(color)
 
         nx.draw_networkx_nodes(self.graph, self.nodes_pos, node_color=colors)
@@ -117,26 +117,27 @@ def main():
 
     number_of_nodes = int(sys.argv[1])
 
-    ### INIT NODES ###
+    ### INIT NODES with a graph
+    graph = nx.gn_graph(number_of_nodes)
+
     nodes = []
     for i in range(number_of_nodes):
         node_name = '%s' % i
-        node = Node(node_name)
+        neighbors = [str(node) for node in chain(graph.predecessors(i), graph.successors(i))]
+        node = Node(node_name, neighbors)
         node.consumer.start()
         nodes.append(node)
 
-    nodes[0].neighbors = ['1', '2', '3']
-    nodes[1].neighbors = ['0']
-    nodes[2].neighbors = ['0']
-    nodes[3].neighbors = ['0', '7', '4']
-    nodes[4].neighbors = ['3', '5', '6']
-    nodes[5].neighbors = ['4']
-    nodes[6].neighbors = ['4']
-    nodes[7].neighbors = ['3', '8', '9']
-    nodes[8].neighbors = ['7']
-    nodes[9].neighbors = ['7']
+    graph_attributes = {}
+    for i in range(len(nodes)):
+        graph_attributes[i] = {
+            'node': nodes[i],
+            'label': nodes[i].name
+        }
 
-    Drawer(nodes).start()
+    nx.set_node_attributes(graph, graph_attributes)
+
+    Drawer(graph).start()
 
     while True:
         cmd_line = input('>>> ')
