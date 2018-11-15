@@ -5,6 +5,7 @@
 """
 
 from itertools import chain
+import os
 import sys
 import threading
 import matplotlib.pyplot as plt
@@ -12,13 +13,42 @@ import matplotlib as mpl
 import networkx as nx
 from node import Node
 
-class Drawer(threading.Thread):
+class Input(threading.Thread):
+    """
+        Class to listen to user input
+    """
+
+    def __init__(self, nodes):
+        super(Input, self).__init__()
+        self.nodes = nodes
+
+    def run(self):
+        while True:
+            cmd_line = input('>>> ')
+            cmd_line_args = cmd_line.split(' ')
+            cmd = cmd_line_args[0]
+            if cmd == 'exit':
+                print('exiting...')
+                os._exit(0)
+            if cmd == 'init':
+                if len(cmd_line_args) != 2:
+                    print('usage: init target_node')
+                    continue
+                target_node = cmd_line_args[1]
+                initialize_network(self.nodes, target_node)
+            elif cmd == 'ask':
+                if len(cmd_line_args) != 2:
+                    print('usage: init [target_nodes]')
+                    continue
+                target_nodes = cmd_line_args[1].split(',')
+                ask_for_critical_section(self.nodes, target_nodes)
+
+class Drawer:
     """
         Class to draw the network graph
     """
 
     def __init__(self, graph):
-        super().__init__()
         self.graph = graph
         # self._generate_graph()
         self.nodes_pos = nx.spring_layout(self.graph)
@@ -41,7 +71,7 @@ class Drawer(threading.Thread):
             return 'blue'
         return 'grey'
 
-    def _generate_graph(self):
+    def generate_graph(self):
         """
             Generates the graph
         """
@@ -58,7 +88,7 @@ class Drawer(threading.Thread):
         if None in self.graph:
             self.graph.remove_node(None)
 
-    def _draw_graph(self):
+    def draw_graph(self):
         """
             Draws the graph
         """
@@ -77,16 +107,11 @@ class Drawer(threading.Thread):
         nx.draw_networkx_nodes(self.graph, self.nodes_pos, node_color=colors)
         nx.draw_networkx_labels(self.graph, self.nodes_pos, labels, font_size=10, font_color='w')
         nx.draw_networkx_edges(self.graph, self.nodes_pos,
-                               arrowstyle='->', arrowsize=10, width=2)
+                               arrowstyle='->', arrowsize=10)
 
         axis = plt.gca()
         axis.set_axis_off()
-        plt.pause(0.001)
-
-    def run(self):
-        while True:
-            self._generate_graph()
-            self._draw_graph()
+        plt.pause(0.1)
 
 def initialize_network(nodes, init_node):
     """
@@ -137,26 +162,12 @@ def main():
 
     nx.set_node_attributes(graph, graph_attributes)
 
-    Drawer(graph).start()
+    drawer = Drawer(graph)
+    Input(nodes).start()
 
     while True:
-        cmd_line = input('>>> ')
-        cmd_line_args = cmd_line.split(' ')
-        cmd = cmd_line_args[0]
-        if cmd == 'exit':
-            sys.exit(0)
-        if cmd == 'init':
-            if len(cmd_line_args) != 2:
-                print('usage: init target_node')
-                continue
-            target_node = cmd_line_args[1]
-            initialize_network(nodes, target_node)
-        elif cmd == 'ask':
-            if len(cmd_line_args) != 2:
-                print('usage: init [target_nodes]')
-                continue
-            target_nodes = cmd_line_args[1].split(',')
-            ask_for_critical_section(nodes, target_nodes)
+        drawer.generate_graph()
+        drawer.draw_graph()
 
 
 if __name__ == '__main__':
