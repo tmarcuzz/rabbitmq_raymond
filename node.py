@@ -8,16 +8,17 @@ import sys
 import threading
 import time
 import pika
+import logging
+
 from fifo import Fifo
 from ast import literal_eval as make_tuple
-import asyncio
 
 MSG_ADVISE = 'advise'
 MSG_INITIALIZE = 'initialize'
 MSG_PRIVILEGE = 'privilege'
 MSG_REQUEST = 'request'
 MSG_RESTART = 'restart'
-
+logging.basicConfig(filename='exchanges.log',level=logging.INFO)
 
 class Consumer(threading.Thread):
     """
@@ -89,7 +90,7 @@ class Node:
         self.is_recovering = False
         self.neighbors_states = {}
         self.neighbors = neighbors if neighbors else []
-        self.consumer = Consumer(self.name, self._treat_message)
+        self.consumer = Consumer(self.name, self._handle_message)
         self.publisher = Publisher(self.name)
 
     def _assign_privilege(self):
@@ -141,7 +142,7 @@ class Node:
 
     def _recover(self):
         self.is_recovering = True
-        time.sleep(3)
+        time.sleep(5)
         for neighbor in self.neighbors:
             self.publisher.send_request(neighbor, MSG_RESTART)
 
@@ -172,13 +173,14 @@ class Node:
         self.using = False
         self._assign_privilege_and_make_request()
 
-    def _treat_message(self, ch, method, properties, body):
+    def _handle_message(self, ch, method, properties, body):
         """
             Callback for the RabbitMQ consumer
             Messages are sent with 'node_name.type' routing keys and 'sender' as body
         """
         sender = method.routing_key.split('.')[0]
         message_type = method.routing_key.split('.')[2]
+        logging.info("## Received {} from {}".format(message_type, sender))
         if message_type == MSG_REQUEST:
             self._receive_request(sender)
         elif message_type == MSG_PRIVILEGE:
@@ -211,7 +213,7 @@ class Node:
             self.asked = self.neighbors_states[self.holder][2]
         # Rebuild request_q
         for neighbor, state in self.neighbors_states.items():
-            if state[0] and state[1]:
+            if state[0] and state[1] and not neighbor in self._request_q:
                 self._request_q.push(neighbor)
         self.is_recovering = False
         self._assign_privilege_and_make_request()

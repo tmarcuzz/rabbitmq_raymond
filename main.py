@@ -11,8 +11,8 @@ import threading
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import networkx as nx
+import random
 from node import Node
-import asyncio
 
 mpl.use("TkAgg")
 
@@ -50,21 +50,23 @@ class Controller(threading.Thread):
                 target_node = cmd_line_args[1]
                 CommandRunner(initialize_network, self.nodes, target_node).start()
             elif cmd == 'ask':
-                if len(cmd_line_args) != 2:
+                if len(cmd_line_args) < 2:
                     print('usage: init [target_nodes]')
                     continue
-                target_nodes = cmd_line_args[1].split(',')
-                CommandRunner(ask_for_critical_section, self.nodes, target_nodes).start()
+                target_nodes = cmd_line_args[1:]
+                for target_node in target_nodes:
+                    CommandRunner(ask_for_critical_section, self.nodes, target_node).start()
             elif cmd == 'kill':
-                if len(cmd_line_args) != 2:
-                    print('usage: kill target_nodes')
+                if len(cmd_line_args) < 2:
+                    print('usage: kill [target_nodes]')
                     continue
-                target_node = cmd_line_args[1]
-                CommandRunner(kill, self.nodes, target_node).start()
+                target_nodes = cmd_line_args[1:]
+                for target_node in target_nodes:
+                    CommandRunner(kill, self.nodes, target_node).start()
 
 class Drawer:
     """
-        Class to draw the network graph
+        Class to draw the network graph.split(',').split(',')
     """
 
     def __init__(self, graph):
@@ -85,10 +87,10 @@ class Drawer:
             other -> grey
         """
         if node.holder == 'self':
-            return 'green'
+            return '#42c968'
         if node.asked:
-            return 'blue'
-        return 'grey'
+            return "#4bdbdd"#'#5f7ecc'
+        return 'w'
 
     def generate_graph(self):
         """
@@ -119,12 +121,20 @@ class Drawer:
             labels[graph_node] = graph_node
 
         colors = []
+        edge_colors = []
+        line_widths = []
         for graph_node in self.graph.nodes():
             color = self._get_color(self.graph.node[graph_node]['node'])
             colors.append(color)
+            if 'self' in self.graph.node[graph_node]['node']._request_q:
+                edge_colors.append('black')
+                line_widths.append(2.5)
+            else:
+                edge_colors.append('black')
+                line_widths.append(1)
 
-        nx.draw_networkx_nodes(self.graph, self.nodes_pos, node_color=colors)
-        nx.draw_networkx_labels(self.graph, self.nodes_pos, labels, font_size=10, font_color='w')
+        nx.draw_networkx_nodes(self.graph, self.nodes_pos, node_color=colors, edgecolors=edge_colors, linewidths=line_widths)
+        nx.draw_networkx_labels(self.graph, self.nodes_pos, labels, font_size=10, font_color='black')
         nx.draw_networkx_edges(self.graph, self.nodes_pos,
                                arrowstyle='->', arrowsize=10)
 
@@ -140,12 +150,12 @@ def initialize_network(nodes, init_node):
         if node.name == init_node:
             node.initialize_network()
 
-def ask_for_critical_section(nodes, asking_nodes):
+def ask_for_critical_section(nodes, asking_node):
     """
         Make the asking_nodes ask for the critical section
     """
     for node in nodes:
-        if node.name in asking_nodes:
+        if node.name == asking_node:
             node.ask_for_critical_section()
 
 def kill(nodes, node_to_kill):
@@ -180,6 +190,8 @@ def main():
         node = Node(node_name, neighbors)
         node.consumer.start()
         nodes.append(node)
+    
+    initialize_network(nodes, str(random.randint(0, number_of_nodes-1)))
 
     graph_attributes = {}
     for i in range(len(nodes)):
@@ -192,7 +204,6 @@ def main():
 
     drawer = Drawer(graph)
     Controller(nodes).start()
-
     while True:
         drawer.generate_graph()
         drawer.draw_graph()
