@@ -106,10 +106,8 @@ class Drawer:
         return "black"
 
     def _get_linewidth(self, node):
-        if "self" in node._request_q:
-            line_width = 2.5
-        elif node.is_working:
-            line_width = 2.5
+        if "self" in node._request_q or node.is_working:
+            return 2.5
         return 1
 
     def _get_style(self):
