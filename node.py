@@ -13,12 +13,18 @@ import logging
 from fifo import Fifo
 from ast import literal_eval as make_tuple
 
-MSG_ADVISE = 'advise'
-MSG_INITIALIZE = 'initialize'
-MSG_PRIVILEGE = 'privilege'
-MSG_REQUEST = 'request'
-MSG_RESTART = 'restart'
-logging.basicConfig(filename='exchanges.log',level=logging.INFO)
+MSG_ADVISE = "advise"
+MSG_INITIALIZE = "initialize"
+MSG_PRIVILEGE = "privilege"
+MSG_REQUEST = "request"
+MSG_RESTART = "restart"
+
+WORK_TIME = 2
+RECOVER_TIMEOUT = 2
+PROPAGATION_DELAY = 0.5
+
+logging.basicConfig(filename="exchanges.log", level=logging.INFO)
+
 
 class Consumer(threading.Thread):
     """
@@ -37,17 +43,23 @@ class Consumer(threading.Thread):
             Declares the queue with name 'node_name'
             Routing key for the queue is node_name.*
         """
-        self._connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+        self._connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host="localhost")
+        )
         channel = self._connection.channel()
-        channel.exchange_declare(exchange='raymond', exchange_type='topic')
+        channel.exchange_declare(exchange="raymond", exchange_type="topic")
         channel.queue_declare(queue=self._node_name, exclusive=True)
-        channel.queue_bind(exchange='raymond',
-                           queue=self._node_name, routing_key='*.%s.*' % self._node_name)
+        channel.queue_bind(
+            exchange="raymond",
+            queue=self._node_name,
+            routing_key="*.%s.*" % self._node_name,
+        )
         channel.basic_consume(self._callback, queue=self._node_name, no_ack=True)
         self._channel = channel
 
     def run(self):
         self._channel.start_consuming()
+
 
 class Publisher:
     """
@@ -62,18 +74,22 @@ class Publisher:
         """
             Sets the RabbitMQ connection
         """
-        self._connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+        self._connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host="localhost")
+        )
         channel = self._connection.channel()
-        channel.exchange_declare(exchange='raymond', exchange_type='topic')
+        channel.exchange_declare(exchange="raymond", exchange_type="topic")
         self._channel = channel
 
-    def send_request(self, target_node, request_type, message=''):
+    def send_request(self, target_node, request_type, message=""):
         """
             Sends message to RabbitMQ exchange
         """
-        routing_key = '%s.%s.%s' % (self._node_name, target_node, request_type)
-        self._channel.basic_publish(exchange='raymond',
-                                    routing_key=routing_key, body="%s" % message)
+        routing_key = "%s.%s.%s" % (self._node_name, target_node, request_type)
+        self._channel.basic_publish(
+            exchange="raymond", routing_key=routing_key, body="%s" % message
+        )
+
 
 class Node:
     """
@@ -88,6 +104,7 @@ class Node:
         self._request_q = Fifo()
         self.asked = False
         self.is_recovering = False
+        self.is_working = False
         self.neighbors_states = {}
         self.neighbors = neighbors if neighbors else []
         self.consumer = Consumer(self.name, self._handle_message)
@@ -97,10 +114,10 @@ class Node:
         """
             Implementation of ASSIGN_PRIVILEGE from Raymond's algorithm
         """
-        if self.holder == 'self' and not self.using and not self._request_q.empty():
+        if self.holder == "self" and not self.using and not self._request_q.empty():
             self.holder = self._request_q.get()
             self.asked = False
-            if self.holder == 'self':
+            if self.holder == "self":
                 self.using = True
                 self._enter_critical_section()
                 self._exit_critical_section()
@@ -111,7 +128,7 @@ class Node:
         """
             Implementation of MAKE_REQUEST from Raymond's algorithm
         """
-        if self.holder != 'self' and not self._request_q.empty() and not self.asked:
+        if self.holder != "self" and not self._request_q.empty() and not self.asked:
             self.publisher.send_request(self.holder, MSG_REQUEST)
             self.asked = True
 
@@ -121,7 +138,7 @@ class Node:
             sleep(x) allows to display what is happening
         """
         if not self.is_recovering:
-            time.sleep(0.5)
+            time.sleep(PROPAGATION_DELAY)
             self._assign_privilege()
             self._make_request()
 
@@ -129,12 +146,13 @@ class Node:
         """
             When the node wants to enter the critical section
         """
-        self._request_q.push('self')
+        self._request_q.push("self")
         self._assign_privilege_and_make_request()
 
     def kill(self):
         self.holder = None
         self.using = False
+        self.is_working = False
         self._request_q = Fifo()
         self.asked = False
         self.neighbors_states = {}
@@ -142,7 +160,7 @@ class Node:
 
     def _recover(self):
         self.is_recovering = True
-        time.sleep(5)
+        time.sleep(RECOVER_TIMEOUT)
         for neighbor in self.neighbors:
             self.publisher.send_request(neighbor, MSG_RESTART)
 
@@ -157,14 +175,18 @@ class Node:
         """
             When the node receives the privilege from another
         """
-        self.holder = 'self'
+        self.holder = "self"
         self._assign_privilege_and_make_request()
 
     def _enter_critical_section(self):
         """
             Does stuff to simulate critical section
         """
-        time.sleep(3)
+        self.is_working = True
+        with open("working_proof.txt", "a") as f:
+            f.write(self.name + "\n")
+        time.sleep(WORK_TIME)
+        self.is_working = False
 
     def _exit_critical_section(self):
         """
@@ -178,8 +200,8 @@ class Node:
             Callback for the RabbitMQ consumer
             Messages are sent with 'node_name.type' routing keys and 'sender' as body
         """
-        sender = method.routing_key.split('.')[0]
-        message_type = method.routing_key.split('.')[2]
+        sender = method.routing_key.split(".")[0]
+        message_type = method.routing_key.split(".")[2]
         logging.info("## Received {} from {}".format(message_type, sender))
         if message_type == MSG_REQUEST:
             self._receive_request(sender)
@@ -190,7 +212,7 @@ class Node:
         elif message_type == MSG_RESTART:
             self._send_advise_message(sender)
         elif message_type == MSG_ADVISE:
-            message = body.decode('UTF-8')
+            message = body.decode("UTF-8")
             self._receive_advise_message(sender, message)
 
     def _receive_advise_message(self, sender, message):
@@ -205,9 +227,11 @@ class Node:
             if not state[0]:
                 self.holder = neighbor
                 break
-        if not self.holder or self.holder == 'self': # Privilege may be received while recovering
-            self.holder = 'self'
-        # Determine asked
+        if (
+            not self.holder or self.holder == "self"
+        ):  # Privilege may be received while recovering
+            self.holder = "self"
+            # Determine asked
             self.asked = False
         else:
             self.asked = self.neighbors_states[self.holder][2]
@@ -226,7 +250,7 @@ class Node:
         state = (
             self.holder == recovering_node,
             self.asked,
-            recovering_node in self._request_q
+            recovering_node in self._request_q,
         )
         self.publisher.send_request(recovering_node, MSG_ADVISE, str(state))
 
@@ -240,12 +264,12 @@ class Node:
             neighbors.remove(init_sender)
             self.holder = init_sender
         else:
-            self.holder = 'self'
+            self.holder = "self"
         for neighbor in neighbors:
             self.publisher.send_request(neighbor, MSG_INITIALIZE)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     if len(sys.argv) < 2:
         sys.stderr.write("Usage: %s node_name\n" % sys.argv[0])
@@ -255,4 +279,4 @@ if __name__ == '__main__':
     node = Node(node_name)
     node.consumer.start()
 
-    #connection.close()
+    # connection.close()

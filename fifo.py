@@ -4,6 +4,7 @@
 
 from collections import deque
 
+
 class Fifo(deque):
     """
         Class to implement handy methods for a Fifo queue with deque
