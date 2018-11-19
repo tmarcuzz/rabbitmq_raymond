@@ -12,14 +12,27 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import networkx as nx
 from node import Node
+import asyncio
 
-class Input(threading.Thread):
+mpl.use("TkAgg")
+
+class CommandRunner(threading.Thread):
+    def __init__(self, cmd, nodes, target):
+        super().__init__()
+        self.nodes = nodes
+        self.target = target
+        self.cmd = cmd
+
+    def run(self):
+        self.cmd(self.nodes, self.target)
+
+class Controller(threading.Thread):
     """
         Class to listen to user input
     """
 
     def __init__(self, nodes):
-        super(Input, self).__init__()
+        super().__init__()
         self.nodes = nodes
 
     def run(self):
@@ -35,19 +48,19 @@ class Input(threading.Thread):
                     print('usage: init target_node')
                     continue
                 target_node = cmd_line_args[1]
-                initialize_network(self.nodes, target_node)
+                CommandRunner(initialize_network, self.nodes, target_node).start()
             elif cmd == 'ask':
                 if len(cmd_line_args) != 2:
                     print('usage: init [target_nodes]')
                     continue
                 target_nodes = cmd_line_args[1].split(',')
-                ask_for_critical_section(self.nodes, target_nodes)
+                CommandRunner(ask_for_critical_section, self.nodes, target_nodes).start()
             elif cmd == 'kill':
                 if len(cmd_line_args) != 2:
                     print('usage: kill target_nodes')
                     continue
                 target_node = cmd_line_args[1]
-                kill(self.nodes, target_node)
+                CommandRunner(kill, self.nodes, target_node).start()
 
 class Drawer:
     """
@@ -178,7 +191,7 @@ def main():
     nx.set_node_attributes(graph, graph_attributes)
 
     drawer = Drawer(graph)
-    Input(nodes).start()
+    Controller(nodes).start()
 
     while True:
         drawer.generate_graph()

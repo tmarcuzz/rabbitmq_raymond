@@ -10,6 +10,7 @@ import time
 import pika
 from fifo import Fifo
 from ast import literal_eval as make_tuple
+import asyncio
 
 MSG_ADVISE = 'advise'
 MSG_INITIALIZE = 'initialize'
@@ -162,7 +163,7 @@ class Node:
         """
             Does stuff to simulate critical section
         """
-        time.sleep(2)
+        time.sleep(3)
 
     def _exit_critical_section(self):
         """
@@ -191,15 +192,29 @@ class Node:
             self._receive_advise_message(sender, message)
 
     def _receive_advise_message(self, sender, message):
-        print(message)
         state = make_tuple(message)
-        print(state)
         self.neighbors_states[sender] = state
-    #     if len(self.neighbors.keys) == len(self.neighbors):
-    #         self._complete_recover()
+        if len(self.neighbors_states) == len(self.neighbors):
+            self._finalize_recover()
 
-    # def _complete_recover(self):
-    #     self.neighbors_states[sender] = state
+    def _finalize_recover(self):
+        # Determine holder
+        for neighbor, state in self.neighbors_states.items():
+            if not state[0]:
+                self.holder = neighbor
+                break
+        if not self.holder or self.holder == 'self': # Privilege may be received while recovering
+            self.holder = 'self'
+        # Determine asked
+            self.asked = False
+        else:
+            self.asked = self.neighbors_states[self.holder][2]
+        # Rebuild request_q
+        for neighbor, state in self.neighbors_states.items():
+            if state[0] and state[1]:
+                self._request_q.push(neighbor)
+        self.is_recovering = False
+        self._assign_privilege_and_make_request()
 
     def _send_advise_message(self, recovering_node):
         """
@@ -211,7 +226,7 @@ class Node:
             self.asked,
             recovering_node in self._request_q
         )
-        self.publisher.send_request(MSG_ADVISE, recovering_node, str(state))
+        self.publisher.send_request(recovering_node, MSG_ADVISE, str(state))
 
     def initialize_network(self, init_sender=None):
         """
