@@ -9,10 +9,13 @@ import threading
 import time
 import pika
 from fifo import Fifo
+from ast import literal_eval as make_tuple
 
-MSG_REQUEST = 'request'
+MSG_ADVISE = 'advise'
 MSG_INITIALIZE = 'initialize'
 MSG_PRIVILEGE = 'privilege'
+MSG_REQUEST = 'request'
+MSG_RESTART = 'restart'
 
 
 class Consumer(threading.Thread):
@@ -37,7 +40,7 @@ class Consumer(threading.Thread):
         channel.exchange_declare(exchange='raymond', exchange_type='topic')
         channel.queue_declare(queue=self._node_name, exclusive=True)
         channel.queue_bind(exchange='raymond',
-                           queue=self._node_name, routing_key='%s.*' % self._node_name)
+                           queue=self._node_name, routing_key='*.%s.*' % self._node_name)
         channel.basic_consume(self._callback, queue=self._node_name, no_ack=True)
         self._channel = channel
 
@@ -62,13 +65,13 @@ class Publisher:
         channel.exchange_declare(exchange='raymond', exchange_type='topic')
         self._channel = channel
 
-    def send_request(self, target_node, request_type):
+    def send_request(self, target_node, request_type, message=''):
         """
             Sends message to RabbitMQ exchange
         """
-        routing_key = '%s.%s' % (target_node, request_type)
+        routing_key = '%s.%s.%s' % (self._node_name, target_node, request_type)
         self._channel.basic_publish(exchange='raymond',
-                                    routing_key=routing_key, body="%s" % self._node_name)
+                                    routing_key=routing_key, body="%s" % message)
 
 class Node:
     """
@@ -82,6 +85,8 @@ class Node:
         self.using = False
         self._request_q = Fifo()
         self.asked = False
+        self.is_recovering = False
+        self.neighbors_states = {}
         self.neighbors = neighbors if neighbors else []
         self.consumer = Consumer(self.name, self._treat_message)
         self.publisher = Publisher(self.name)
@@ -113,9 +118,10 @@ class Node:
             Calls assign_privilege and make_request
             sleep(x) allows to display what is happening
         """
-        time.sleep(0.5)
-        self._assign_privilege()
-        self._make_request()
+        if not self.is_recovering:
+            time.sleep(0.5)
+            self._assign_privilege()
+            self._make_request()
 
     def ask_for_critical_section(self):
         """
@@ -123,6 +129,20 @@ class Node:
         """
         self._request_q.push('self')
         self._assign_privilege_and_make_request()
+
+    def kill(self):
+        self.holder = None
+        self.using = False
+        self._request_q = Fifo()
+        self.asked = False
+        self.neighbors_states = {}
+        self._recover()
+
+    def _recover(self):
+        self.is_recovering = True
+        time.sleep(3)
+        for neighbor in self.neighbors:
+            self.publisher.send_request(neighbor, MSG_RESTART)
 
     def _receive_request(self, sender):
         """
@@ -156,14 +176,42 @@ class Node:
             Callback for the RabbitMQ consumer
             Messages are sent with 'node_name.type' routing keys and 'sender' as body
         """
-        message_type = method.routing_key.split('.')[1]
-        sender = body.decode('UTF-8')
+        sender = method.routing_key.split('.')[0]
+        message_type = method.routing_key.split('.')[2]
         if message_type == MSG_REQUEST:
             self._receive_request(sender)
-        if message_type == MSG_PRIVILEGE:
+        elif message_type == MSG_PRIVILEGE:
             self._receive_privilege()
-        if message_type == MSG_INITIALIZE:
+        elif message_type == MSG_INITIALIZE:
             self.initialize_network(sender)
+        elif message_type == MSG_RESTART:
+            self._send_advise_message(sender)
+        elif message_type == MSG_ADVISE:
+            message = body.decode('UTF-8')
+            self._receive_advise_message(sender, message)
+
+    def _receive_advise_message(self, sender, message):
+        print(message)
+        state = make_tuple(message)
+        print(state)
+        self.neighbors_states[sender] = state
+    #     if len(self.neighbors.keys) == len(self.neighbors):
+    #         self._complete_recover()
+
+    # def _complete_recover(self):
+    #     self.neighbors_states[sender] = state
+
+    def _send_advise_message(self, recovering_node):
+        """
+            Sends  X - Y relationship state:
+                (HolderY == X, AskedY, X in Request_qY)
+        """
+        state = (
+            self.holder == recovering_node,
+            self.asked,
+            recovering_node in self._request_q
+        )
+        self.publisher.send_request(MSG_ADVISE, recovering_node, str(state))
 
     def initialize_network(self, init_sender=None):
         """

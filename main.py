@@ -42,6 +42,12 @@ class Input(threading.Thread):
                     continue
                 target_nodes = cmd_line_args[1].split(',')
                 ask_for_critical_section(self.nodes, target_nodes)
+            elif cmd == 'kill':
+                if len(cmd_line_args) != 2:
+                    print('usage: kill target_nodes')
+                    continue
+                target_node = cmd_line_args[1]
+                kill(self.nodes, target_node)
 
 class Drawer:
     """
@@ -128,6 +134,15 @@ def ask_for_critical_section(nodes, asking_nodes):
     for node in nodes:
         if node.name in asking_nodes:
             node.ask_for_critical_section()
+
+def kill(nodes, node_to_kill):
+    """
+        Kill the node
+    """
+    for node in nodes:
+        if node.name == node_to_kill:
+            node.kill()
+
 
 def main():
     """
