@@ -7,7 +7,11 @@ Python implementation of Raymond's algorithm with RabbitMQ for a school project
 python main.py number_of_nodes
 ```
 
-Then you can type three commands:
+Then you can type four commands:
+- to initialize from node:
+```
+init node
+```
 - to make nodes ask for critical section:
 ```
 ask node1 node2 ... noden
