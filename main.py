@@ -15,10 +15,15 @@ import networkx as nx
 import random
 from node import Node
 
+# To avoid graph window to take focus
 mpl.use("TkAgg")
 
 
 class CommandRunner(threading.Thread):
+    """
+        Class to run a command
+    """
+
     def __init__(self, cmd, nodes, target):
         super().__init__()
         self.nodes = nodes
@@ -83,7 +88,6 @@ class Drawer:
 
     def __init__(self, graph):
         self.graph = graph
-        # self._generate_graph()
         self.nodes_pos = nx.spring_layout(self.graph)
 
         # set interactive mode on
@@ -106,11 +110,14 @@ class Drawer:
         return "black"
 
     def _get_linewidth(self, node):
-        if "self" in node._request_q or node.is_working:
+        if "self" in node.request_q or node.is_working:
             return 2.5
         return 1
 
     def _get_style(self):
+        """
+            Get style for the nodes
+        """
         colors = []
         edge_colors = []
         linewidths = []
@@ -191,6 +198,10 @@ def ask_for_critical_section(nodes, asking_node):
 
 
 def randomize_ask(nodes, *args):
+    """
+        Randomly makes a node ask for critical section
+        Used as cmd for CommandRunner
+    """
     while True:
         time.sleep(random.randint(3, 8))
         ask_for_critical_section(nodes, str(random.randint(0, len(nodes) - 1)))
@@ -206,6 +217,10 @@ def kill(nodes, node_to_kill):
 
 
 def randomize_kill(nodes, *args):
+    """
+        Randomly kills a node
+        Used as cmd for CommandRunner
+    """
     while True:
         time.sleep(random.randint(6, 16))
         kill(nodes, str(random.randint(0, len(nodes) - 1)))

@@ -4,14 +4,12 @@
     Implements a node
 """
 
-import sys
 import threading
 import time
-import pika
-import logging
-
-from fifo import Fifo
 from ast import literal_eval as make_tuple
+import logging
+import pika
+from fifo import Fifo
 
 MSG_ADVISE = "advise"
 MSG_INITIALIZE = "initialize"
@@ -101,7 +99,7 @@ class Node:
         self.name = name
         self.holder = None
         self.using = False
-        self._request_q = Fifo()
+        self.request_q = Fifo()
         self.asked = False
         self.is_recovering = False
         self.is_working = False
@@ -114,8 +112,8 @@ class Node:
         """
             Implementation of ASSIGN_PRIVILEGE from Raymond's algorithm
         """
-        if self.holder == "self" and not self.using and not self._request_q.empty():
-            self.holder = self._request_q.get()
+        if self.holder == "self" and not self.using and not self.request_q.empty():
+            self.holder = self.request_q.get()
             self.asked = False
             if self.holder == "self":
                 self.using = True
@@ -128,7 +126,7 @@ class Node:
         """
             Implementation of MAKE_REQUEST from Raymond's algorithm
         """
-        if self.holder != "self" and not self._request_q.empty() and not self.asked:
+        if self.holder != "self" and not self.request_q.empty() and not self.asked:
             self.publisher.send_request(self.holder, MSG_REQUEST)
             self.asked = True
 
@@ -146,19 +144,27 @@ class Node:
         """
             When the node wants to enter the critical section
         """
-        self._request_q.push("self")
+        self.request_q.push("self")
         self._assign_privilege_and_make_request()
 
     def kill(self):
+        """
+            Simulates a node crash
+            Clears its state
+            Then call recover method
+        """
         self.holder = None
         self.using = False
         self.is_working = False
-        self._request_q = Fifo()
+        self.request_q = Fifo()
         self.asked = False
         self.neighbors_states = {}
         self._recover()
 
     def _recover(self):
+        """
+            Implements Raymond's recovering process
+        """
         self.is_recovering = True
         time.sleep(RECOVER_TIMEOUT)
         for neighbor in self.neighbors:
@@ -168,7 +174,7 @@ class Node:
         """
             When the node receives a request from another
         """
-        self._request_q.push(sender)
+        self.request_q.push(sender)
         self._assign_privilege_and_make_request()
 
     def _receive_privilege(self):
@@ -202,7 +208,7 @@ class Node:
         """
         sender = method.routing_key.split(".")[0]
         message_type = method.routing_key.split(".")[2]
-        logging.info("## Received {} from {}".format(message_type, sender))
+        logging.info("## Received %s from %s" % (message_type, sender))
         if message_type == MSG_REQUEST:
             self._receive_request(sender)
         elif message_type == MSG_PRIVILEGE:
@@ -216,12 +222,18 @@ class Node:
             self._receive_advise_message(sender, message)
 
     def _receive_advise_message(self, sender, message):
+        """
+            When the node receives an advise message from another
+        """
         state = make_tuple(message)
         self.neighbors_states[sender] = state
         if len(self.neighbors_states) == len(self.neighbors):
             self._finalize_recover()
 
     def _finalize_recover(self):
+        """
+            Finalize recovering process
+        """
         # Determine holder
         for neighbor, state in self.neighbors_states.items():
             if not state[0]:
@@ -237,8 +249,8 @@ class Node:
             self.asked = self.neighbors_states[self.holder][2]
         # Rebuild request_q
         for neighbor, state in self.neighbors_states.items():
-            if state[0] and state[1] and not neighbor in self._request_q:
-                self._request_q.push(neighbor)
+            if state[0] and state[1] and not neighbor in self.request_q:
+                self.request_q.push(neighbor)
         self.is_recovering = False
         self._assign_privilege_and_make_request()
 
@@ -250,7 +262,7 @@ class Node:
         state = (
             self.holder == recovering_node,
             self.asked,
-            recovering_node in self._request_q,
+            recovering_node in self.request_q,
         )
         self.publisher.send_request(recovering_node, MSG_ADVISE, str(state))
 
@@ -267,16 +279,3 @@ class Node:
             self.holder = "self"
         for neighbor in neighbors:
             self.publisher.send_request(neighbor, MSG_INITIALIZE)
-
-
-if __name__ == "__main__":
-
-    if len(sys.argv) < 2:
-        sys.stderr.write("Usage: %s node_name\n" % sys.argv[0])
-        sys.exit(1)
-
-    node_name = sys.argv[1]
-    node = Node(node_name)
-    node.consumer.start()
-
-    # connection.close()
